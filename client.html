@@ -1,0 +1,523 @@
+<!DOCTYPE html>
+<html>
+<head>
+   <title>Chat Server</title>
+   <meta charset="UTF-8">
+   <meta name="viewport" content="width=device-width,initial-scale=1">
+   <link rel="stylesheet" type="text/css" href="chat_style.css">
+   <style>
+   /*All CSS included here*/
+   body {
+     background-image: url("http://www.parvaresheafkar.com/wp-content/uploads/2016/01/light-background.jpg");
+     background-size: cover;
+  }
+  #chatlog {
+     font-size: 120%;
+     font-family: Arial;
+  }
+
+  #choose_name {
+   display: block;
+}
+
+#chatRooms {
+   display: none;
+}
+
+#createRoom {
+   display: none;
+}
+
+#roomPassword {
+   display: none;
+}
+#room {
+   display: none;
+}
+#admin{
+   display: none;
+}
+#adminonly{
+   display:none;
+}
+.publicMessage{
+   color: blue;
+}
+.privateMessage{
+   color: red;
+}
+#chatlog{
+   height: 100%;
+   overflow-y: scroll;
+}
+.listadmin{
+   color:green;
+   font-weight:bold;
+   font-style:italic;
+}
+.listmod{
+   color:purple;
+   font-weight:bold;
+}
+.reguser{
+   color:blue;
+}
+ul{
+   list-style-type: none;
+   display:inline;
+}
+
+button {
+  border: none;
+  color: black;
+  padding: 15px 32px 15px  15px;
+  text-align: center;
+  text-decoration: none;
+  display: inline-block;
+  font-size: 16px;
+}
+#chatRooms button {
+   display: block;
+}
+
+input[type=text] {
+  padding: 15px 20px;
+  margin: 8px 0;
+  box-sizing: border-box;
+  width: 20%
+}
+</style>
+<script src="http://ajax.googleapis.com/ajax/libs/jquery/3.2.1/jquery.min.js" type="text/javascript"></script>
+<script src="/socket.io/socket.io.js"></script>
+<script type ="text/javascript">
+   //global variables
+   var allChatRooms = [];
+   var currentUser;
+   var currentRoom;
+   var socketio = io.connect();
+   //array of filtered words and creates a new regex from this array
+   //Source: http://www.devcurry.com/2011/03/javascript-filter-bad-words-in-string.html
+   var filterWords = ["dumb","fool"];
+   var rgx = new RegExp(filterWords.join("|"),"gi");
+   //appends a new message to the chatlog
+   socketio.on("message_to_client",function(data) {
+      var message = data['message'];
+         //checks if user wants to filter words
+         if(document.getElementById('filter').checked){
+            message = wordFilter(message);
+         }
+         //make new message element with a publicmessage class
+         document.getElementById("chatlog").appendChild(document.createElement("hr"));
+         var messageInsert = document.createElement("p");
+         var text = document.createTextNode(data['nickname'] + ": " + message);
+         messageInsert.className = "publicMessage";
+         messageInsert.appendChild(text);
+         document.getElementById("chatlog").appendChild(messageInsert);
+      });
+   //checks if room is created from the server and alerts the user if it isn't. Otherwise, we update everybody with the new chat room
+   socketio.on("create_room_to_client",function(data) {
+      if(data["created"]=="true"){
+         allChatRooms = data['rooms'];
+         if(currentUser==data['nickname']){
+            document.getElementById('new_room_name').value = "";
+            document.getElementById('new_room_pw').value = "";
+         }
+         listChatRooms();
+      }
+      if(data["created"]=="false"){
+         if(currentUser==data['nickname']){
+            alert("Room already exists");
+         }
+      }
+   });
+   //receive chatRoom information from server and store a copy locally. Updates the chat room list
+   socketio.on("send_rooms",function(data) {
+      if(currentUser==data['nickname']){
+         if(data['login']=='true'){
+            document.getElementById("choose_name").style.display= "none";
+            document.getElementById("chatRooms").style.display= "block";
+            document.getElementById("createRoom").style.display= "block";
+            document.getElementById("room").style.display= "none";
+            allChatRooms = [];
+            allChatRooms = data["rooms"];
+            listChatRooms();
+         }    
+      } 
+   });
+   //updates all users on new chat rooms. If user is in the room that was changed, they update the new list of users and check if they have been modded
+   socketio.on("update_users_to_client",function(data) {
+      allChatRooms = data['rooms'];
+      if(data['currentRoom']==currentRoom){
+         listAllUsers(currentRoom);
+         for(var i=0;i<allChatRooms.length;i++){
+            if(currentRoom==allChatRooms[i].roomName){
+               if(currentUser==allChatRooms[i].roomAdmin){
+                  document.getElementById('admin').style.display="block";
+                  document.getElementById('adminonly').style.display="block";
+               }
+               for(var j=0;j<allChatRooms[i].roomMods.length;j++){
+                  if(currentUser==allChatRooms[i].roomMods[j]){
+                     document.getElementById('admin').style.display="block";
+                     document.getElementById('adminonly').style.display="none";
+                  }
+               }
+            }
+         }
+      }
+   });
+   //receives private message from the socket room they are in. If they are the recipient or sender, print out the message.
+   socketio.on("privatemessage_to_client",function(data) {
+      if(currentUser==data['to']){
+         var message = data['msg'];
+         if(document.getElementById('filter').checked){
+            message = wordFilter(message);
+         }
+         document.getElementById("chatlog").appendChild(document.createElement("hr"));
+         var messageInsert = document.createElement("p");
+         var text = document.createTextNode("Private Message from "+data['from'] + ": " + message);
+         messageInsert.className = "privateMessage";
+         messageInsert.appendChild(text);
+         document.getElementById("chatlog").appendChild(messageInsert);
+      }
+      if(currentUser==data['from']){
+         var message = data['msg'];
+         if(document.getElementById('filter').checked){
+            message = wordFilter(message);
+         }
+         document.getElementById("chatlog").appendChild(document.createElement("hr"));
+         var messageInsert = document.createElement("p");
+         var text = document.createTextNode("Private Message to "+data['to'] + ": " + message);
+         messageInsert.className = "privateMessage";
+         messageInsert.appendChild(text);
+         document.getElementById("chatlog").appendChild(messageInsert);
+      }
+   });
+   //runs when a user has been kicked. If user is the user kicked, then they are forced to leave the room and alerted.
+   socketio.on("kickuser_to_client",function(data) {
+      if(data['kicked']==currentUser&&data['room']==currentRoom&&data['found']=="true"&&currentUser!=data['user']){
+         leaveRoom();
+         alert("You have been kicked from: "+ data['room']);
+      }
+      if(data['found']=='false'&&currentUser==data['user']){
+         alert("User not in room");
+      }
+      if(data['found']=='true'&&currentUser==data['user']){
+         alert("You have kicked: "+ data['kicked']);
+      }
+   });
+   //runs when a user has been banned. If user is the one getting banned, they are forced to leave the room and cannot reenter.
+   socketio.on("banuser_to_client",function(data) {
+      if(data['banned']==currentUser&&data['room']==currentRoom&&data['found']=="true"&&currentUser!=data['user']){
+         leaveRoom();
+         alert("You have been banned from: "+data['room']);
+      }
+      if(data['found']=='false'&&currentUser==data['user']){
+         alert("User not in room");
+      } 
+      if(data['found']=='true'&&currentUser==data['user']){
+         alert("You have banned: "+ data['banned']);
+      }
+   });
+   //runs when the server confirms that the user can join a chat room. Prompts a password if room is password protected
+   socketio.on("join_room_to_client",function(data) {
+      var banned = false;
+      if(data['banned']=="true"&&data['nickname']==currentUser){
+         alert("You have been banned!");
+         banned = true;
+      }
+      if(data['banned']=="false"&&!banned){
+         if (currentUser == data['nickname']){
+            if (data['hasPassword'] == 'false') {
+               currentRoom = data['room'];
+               enterRoom(data['room']);  
+
+            }
+            if (data['hasPassword'] =='true'){
+               var pass = prompt("Enter password", "");
+               if (pass == data['password']) {
+                  enterRoom(data['room']);
+                  currentRoom=data['room'];
+               } else {
+                  alert("wrong password");
+               }
+            }
+         }
+      }
+   });
+   //lists all users based on status
+   function listAllUsers(room){
+      var users = document.getElementById('users');
+      users.innerHTML = "";
+      var html = "<ul>";
+      var print = true;
+      for(var i=0;i<allChatRooms.length;i++){
+         if(allChatRooms[i].roomName==room){
+            for(var j=0;j<allChatRooms[i].roomUsers.length;j++){
+               print = true;
+               var user = htmlEntities(allChatRooms[i].roomUsers[j]);
+               if(allChatRooms[i].roomUsers[j]==allChatRooms[i].roomAdmin){
+                  html +=  "<li class='listadmin'>" + user +" (Admin)</li>";
+                  print = false;
+               }
+               else{
+                  for(var k=0;k<allChatRooms[i].roomMods.length;k++){
+                     if(allChatRooms[i].roomUsers[j]==allChatRooms[i].roomMods[k]){
+                        html+="<li class='listmod'>" + user + " (Moderator)</li>";
+                        print = false;
+                     }
+                  }
+               }
+               if(print){
+                  html+="<li class ='reguser'>"+ user +"</li><br>";
+               }
+            }
+         }
+      }
+      html+="</ul>"
+      users.innerHTML = "<strong>Users in the room: </strong>" +  html;
+   }
+   //replaces word that is filtered with ****
+   function wordFilter(str) {          
+      return str.replace(rgx, "****");           
+   }
+   //displays the html for the room when the user enters
+   function enterRoom(room) {
+      alert("entered: " + room);
+      document.getElementById("chatRooms").style.display = "none";
+      document.getElementById("createRoom").style.display = "none";
+      document.getElementById("room").style.display= "block";
+      socketio.emit("user_joined_to_server", {nickname:currentUser,room:room});
+   }
+   //sends a message and emits to server
+   function sendMessage(){
+      var msg = document.getElementById("message_input").value;
+      var name = document.getElementById("name").value;
+      socketio.emit('message_to_server', {message:msg,nickname:name,room:currentRoom});
+   }
+   //emits to server to create room
+   function checkChatRooms(){
+      var name = document.getElementById("new_room_name").value;
+      if (name.length < 1) {
+         alert("Room name too short");
+         return;
+      }
+      var password = document.getElementById("new_room_pw").value;
+      var admin = currentUser;
+      socketio.emit("create_room_to_server",{name:name,pw:password,admin:admin,nickname:currentUser});       
+   }
+   //Source: https://css-tricks.com/snippets/javascript/htmlentities-for-javascript/
+   function htmlEntities(str) {
+      return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+   }
+   //lists all chat rooms in the server
+   function listChatRooms(){
+      var chatRooms = document.getElementById("chatRooms");
+      chatRooms.innerHTML= "";
+      var html="<h3>List of Chat Rooms:</h3>";
+      for (var i = 0 ; i < allChatRooms.length; i++) {
+         var escapedRoomName = htmlEntities(allChatRooms[i].roomName);
+         html += '<button onclick="goChatRoom(\'' + escapedRoomName + '\')">' + escapedRoomName + '</button><br>';
+      }
+      chatRooms.innerHTML = html;
+   }
+   //emits to server for a request to enter room
+   function goChatRoom(id) {
+      socketio.emit("enter_room_to_server",{room:id,nickname:currentUser});
+   }
+   //logs in and emits a request to server for room information and to check if user exists
+   function chooseNickname(){
+      var nickname = document.getElementById("name").value;
+      if (nickname.length > 0){
+         currentUser = nickname;
+         socketio.emit("get_rooms",{nick:nickname});
+      } else {
+         alert("username too short");
+      }
+   }
+   //emits to server a request to leave the room and changes css
+   function leaveRoom(){
+      document.getElementById("chatRooms").style.display= "block";
+      document.getElementById("createRoom").style.display= "block";
+      document.getElementById("room").style.display= "none";
+      document.getElementById("admin").style.display= "none";
+      document.getElementById("adminonly").style.display = "none";
+      socketio.emit("leaveroom_to_server",{room:currentRoom,nickname:currentUser});
+      currentRoom = null;
+      document.getElementById("chatlog").innerHTML = "";
+   }
+   //kicks user from the room. Checks input for validity
+   function kickUser(){
+      var kickedUser = document.getElementById('kick_ban').value;
+      var kick = true;
+      if (kickedUser == currentUser) {
+         kick=false;
+         alert("Cannot kick yourself");
+         return;
+      }
+      for(var i=0;i<allChatRooms.length;i++){
+         if(allChatRooms[i].roomName==currentRoom){
+            if(kickedUser==allChatRooms[i].roomAdmin){
+               alert("You cannot kick the admin");
+               kick=false;
+               return;
+            }
+            if(allChatRooms[i].roomAdmin==currentUser){
+               socketio.emit("kickuser_to_server",{kickUser:kickedUser,room:currentRoom,user:currentUser});
+               kick=false;
+               return;
+            }
+            for(var j=0;j<allChatRooms[i].roomMods.length;j++){
+               if(kickedUser==allChatRooms[i].roomMods[j]){
+                  alert("Cannot kick a moderator");
+                  kick=false;
+                  return;
+               }
+            }
+         }
+      }
+      if(kick){
+         socketio.emit("kickuser_to_server",{kickUser:kickedUser,room:currentRoom,user:currentUser});
+      }
+   }
+   //bans user from room. Checks input for validity
+   function banUser(){
+      var bannedUser = document.getElementById('kick_ban').value;
+      var ban=true;
+      if(bannedUser==currentUser){
+         alert("You cannot ban yourself");
+         ban = false;
+         return;
+      }
+      for(var i=0;i<allChatRooms.length;i++){
+         if(allChatRooms[i].roomName==currentRoom){
+            if(bannedUser==allChatRooms[i].roomAdmin){
+               alert("You cannot ban the admin");
+               ban=false;
+               return;
+            }
+            if(allChatRooms[i].roomAdmin==currentUser){
+               socketio.emit("banuser_to_server",{bannedUser:bannedUser,room:currentRoom,user:currentUser});
+               ban=false;
+               return;
+            }
+            for(var j=0;j<allChatRooms[i].roomMods.length;j++){
+               if(bannedUser==allChatRooms[i].roomMods[j]){
+                  alert("Cannot ban a moderator");
+                  ban=false;
+                  return;
+               }
+            }
+         }
+      }
+      if(ban){
+         socketio.emit("banuser_to_server",{bannedUser:bannedUser,room:currentRoom,user:currentUser});
+      }
+   }
+   //adds new words to filter list
+   function addToFilter() {
+      var newWord = document.getElementById("newFilter").value;
+      if(newWord.length>2){
+         for (var i = 0; i< filterWords.length; i++){
+            if (filterWords[i] == newWord) {
+               alert("Word already being filtered");
+               return;
+            }
+         } filterWords.push(newWord);
+         rgx = new RegExp(filterWords.join("|"),"gi");
+         alert("You have added "+newWord+" to filter list");
+      }
+      else{
+         alert("Please insert more than 2 letters");
+      }
+
+   }
+   //sends private message request to server and checks message for validity
+   function sendPrivate(){
+      var private_user = document.getElementById('private_user').value;
+      var found = false;
+      for(var i=0;i<allChatRooms.length;i++){
+         if(allChatRooms[i].roomName==currentRoom){
+            for(var j=0;j<allChatRooms[i].roomUsers.length;j++){
+               if(private_user!=currentUser){
+                  if(private_user==allChatRooms[i].roomUsers[j]){
+                     var message = prompt("Enter Your message here");
+                     if(message!=null){
+                        socketio.emit("privatemessage_to_server",{from:currentUser,to:private_user,msg:message,room:currentRoom});
+                        found = true;
+                     }
+                     else{
+                        alert("No message detected");
+                     }
+
+                  }
+               }
+               else{
+                  found = true;
+                  alert("Cannot send message to yourself");  
+                  return;            
+               }
+            }
+         }
+      }
+      if(!found){
+         alert("User not in room");
+      }
+   }
+   //server request to add a new mod
+   function addMod(){
+      var mod = document.getElementById('addmod').value;
+      if(mod==currentUser){
+         alert("Cannot add yourself");
+      }
+      else{
+         socketio.emit("addmod_to_server",{room:currentRoom,mod:mod});
+      }
+
+   }
+</script>
+</head>
+<body>
+   <!--Log on Page-->
+   <div id="choose_name">
+      <input type="text" id="name" placeholder = "Enter nickname here"/>
+      <button id="choose_nickname_btn" onclick="chooseNickname()">Choose nickname</button>
+   </div>
+   <!--Chat room list and option to create new room-->
+   <div id = "createRoom">
+      Create a room:
+      <input type="text" id="new_room_name" placeholder="Enter chat room name"/>
+      <input type="text" id="new_room_pw" placeholder="Enter password here"/>
+      <button id = "create_room_btn" onclick="checkChatRooms()">Create</button>
+   </div>
+   <div id="chatRooms" class ="chatRoomsClass"></div>
+   <!--Chat room page-->
+   <div id="room">
+      <!--lists users-->
+      <div id="users"></div><br>
+      <button onclick="leaveRoom()">Leave Room</button><br><br>
+      <!--admin and moderator section-->
+      <div id="admin">
+         <!--only the admin sees this-->
+         <div id="adminonly">
+            <input type="text" id="addmod" placeholder="Enter nickname"/>
+            <button onclick="addMod()">Add Moderator</button>
+         </div>
+         <input type="text" id="kick_ban" placeholder="User you want to kick or ban"/>
+         <button onclick="kickUser()">Kick User</button>
+         <button onclick="banUser()">Ban User</button><br><br>
+      </div>
+      <!--Filter bad words input and check box-->
+      <input type="checkbox" id="filter"> Filter Bad Words<br>
+      <input type = "text" id = "newFilter" placeholder="Enter word to filter"/>
+      <button onclick="addToFilter()">Add to Filter</button><br><br>
+      <!--input new message-->
+      <input type="text" id="message_input" placeholder="Message" />
+      <button onclick="sendMessage()">Send Message</button><br>
+      <!--input private message-->
+      <input type="text" id = "private_user" placeholder="Send Private Message to:" />
+      <button onclick="sendPrivate()">Select User</button>
+      <!--chat log-->
+      <div id="chatlog"></div>
+   </div>
+</body>
+</html>
