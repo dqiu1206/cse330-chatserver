@@ -1,7 +1,3 @@
-### Link to server (server is not running 24/7) ###
-
-* http://ec2-52-15-177-59.us-east-2.compute.amazonaws.com:3456/client.html
-
 ### Website description ###
 
 * Upon entering the site, users select a nickname.  After a nickname has been selected, they enter the lobby containing all the existing rooms.  Users can join rooms by clicking on them, or create their own room.  Once inside a room, users can see all the other users in the same room, and send private/public messages.  Only the creator of the room and the moderators have the power to kick/ban normal users.  Users can leave or join rooms as they please, as long as they are not permanently banned.
